@@ -11,10 +11,10 @@ func main() {
 	data := []string{"one", "two", "three"}
 	for _, v := range data {
 		wg.Add(1)
-		go func() {
-			fmt.Println(v)
+		go func(val string) {
+			fmt.Println(val)
 			wg.Done()
-		}()
+		}(v)
 	}
 	wg.Wait()
 }

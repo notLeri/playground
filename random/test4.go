@@ -7,15 +7,22 @@ import (
 
 func main() {
 	// Какой будет результат выполнения приложения
-	ch := make(chan int)
+	ch := make(chan int, 1)
 	wg := &sync.WaitGroup{}
-	wg.Add(3)
 	for i := 0; i < 3; i++ {
+		wg.Add(1)
 		go func(idx int) {
 			ch <- (idx + 1) * 2
 			wg.Done()
 		}(i)
 	}
-	fmt.Printf("result: %d\n", <-ch)
-	wg.Wait()
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	for v := range ch {
+		fmt.Printf("result: %d\n", v)
+	}
 }
