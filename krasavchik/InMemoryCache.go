@@ -13,38 +13,41 @@ import (
 // 3. Должны быть написаны тестовые сценарии использования данного кэша
 // (базовые структуры не менять)
 
-type UserProfile struct {
-	ID string
-	Name string
+type CustomerProfile struct {
+	UUID   string
+	Name   string
+	Orders []*Order
 }
 
 type Order struct {
-	ID string
-	Amount int
+	UUID      string
+	Value     any
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type CacheItem struct {
-	Profile UserProfile
-	Orders []Order
+	Profile   CustomerProfile
 	ExpiresAt time.Time
 }
 
 type Cache struct {
-	mu sync.RWMutex
+	mu   sync.RWMutex
 	data map[string]CacheItem
-	ttl time.Duration
-	done chan struct{}
+	ttl  time.Duration
 }
 
 func NewCache(ctx context.Context, ttl time.Duration) *Cache {
 	c := &Cache{
 		data: make(map[string]CacheItem, 10),
-		ttl: ttl,
+		ttl:  ttl,
 	}
 	go c.startCleaner(ctx)
 
 	return c
 }
+
+// утилитарные методы
 
 func (c *Cache) clean() {
 	now := time.Now()
@@ -52,9 +55,9 @@ func (c *Cache) clean() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for userId, item := range c.data {
+	for userID, item := range c.data {
 		if now.After(item.ExpiresAt) {
-			delete(c.data, userId)
+			delete(c.data, userID)
 		}
 	}
 }
@@ -68,40 +71,62 @@ func (c *Cache) startCleaner(ctx context.Context) {
 		case <-ticker.C:
 			c.clean()
 		case <-ctx.Done():
-            return
+			return
 		}
 	}
 }
 
-func (c *Cache) Set(userId string, orders []Order) {
+func cloneOrders(orders []*Order) []*Order {
+	if orders == nil {
+		return nil
+	}
+
+	clone := make([]*Order, len(orders))
+
+	for i, order := range orders {
+		if order == nil {
+			continue
+		}
+
+		copyOrder := *order
+
+		clone[i] = &copyOrder
+	}
+
+	return clone
+}
+
+func (p CustomerProfile) Clone() CustomerProfile {
+	return CustomerProfile{
+		UUID:   p.UUID,
+		Name:   p.Name,
+		Orders: cloneOrders(p.Orders),
+	}
+}
+
+// основные методы
+
+func (c *Cache) Set(userId string, profile CustomerProfile) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.data[userId] = CacheItem{
-		Profile: UserProfile{},
-		Orders: orders,
+		Profile:   profile.Clone(),
 		ExpiresAt: time.Now().Add(c.ttl),
 	}
 }
 
-func (c *Cache) Get(userId string) (CacheItem, bool) {
+func (c *Cache) Get(userId string) (CustomerProfile, bool) {
 	c.mu.RLock()
-	item, ok := c.data[userId]
-	c.mu.RUnlock()
+	cacheItem, ok := c.data[userId]
 
-	if !ok {
-		return CacheItem{}, false
+	if !ok || time.Now().After(cacheItem.ExpiresAt) {
+		c.mu.RUnlock()
+		return CustomerProfile{}, false
 	}
 
-	if time.Now().After(item.ExpiresAt) {
-        c.mu.Lock()
-        defer c.mu.Unlock()
+	profile := cacheItem.Profile.Clone()
+	c.mu.RUnlock()
 
-        if item2, ok2 := c.data[userId]; ok2 && time.Now().After(item2.ExpiresAt) {
-            delete(c.data, userId)
-        }
-        return CacheItem{}, false
-    }
-
-	return item, true
+	return profile, true
 }
