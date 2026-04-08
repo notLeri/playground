@@ -78,6 +78,7 @@ func (c *Cache) Set(userId string, orders []Order) {
 	defer c.mu.Unlock()
 
 	c.data[userId] = CacheItem{
+		Profile: UserProfile{},
 		Orders: orders,
 		ExpiresAt: time.Now().Add(c.ttl),
 	}
