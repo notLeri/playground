@@ -2,6 +2,11 @@ package main
 
 import "fmt"
 
+type Packet struct {
+	Header byte      // 1 байт
+	Data   [256]byte // 256 байт
+}
+
 const (
 	FlagA byte = 1 << 0 // 00000001
 	FlagB byte = 1 << 1 // 00000010

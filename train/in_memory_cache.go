@@ -39,7 +39,7 @@ type Cache struct {
 
 func NewCache(ctx context.Context, ttl time.Duration) *Cache {
 	c := &Cache{
-		data: make(map[string]CacheItem, 10),
+		data: make(map[string]CacheItem),
 		ttl:  ttl,
 	}
 	go c.startCleaner(ctx)
@@ -47,23 +47,40 @@ func NewCache(ctx context.Context, ttl time.Duration) *Cache {
 	return c
 }
 
+var cleanerDelay = 10 * time.Second
+
 // утилитарные методы
 
 func (c *Cache) clean() {
 	now := time.Now()
 
+	var expiredKeys []string
+
+	c.mu.RLock()
+	for userID, item := range c.data {
+		if now.After(item.ExpiresAt) {
+			expiredKeys = append(expiredKeys, userID)
+		}
+
+	}
+	c.mu.RUnlock()
+
+	if len(expiredKeys) == 0 {
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for userID, item := range c.data {
-		if now.After(item.ExpiresAt) {
+	for _, userID := range expiredKeys {
+		if item, ok := c.data[userID]; ok && now.After(item.ExpiresAt) {
 			delete(c.data, userID)
 		}
 	}
 }
 
 func (c *Cache) startCleaner(ctx context.Context) {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(cleanerDelay)
 	defer ticker.Stop()
 
 	for {
